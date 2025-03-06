@@ -121,6 +121,10 @@ export default {
       } catch (error) {
         if (error.response && error.response.status === 403) {
           errorMessage.value = 'Упс, у нас это недоступно =(';
+        
+        } else if (error.response && error.response.status === 404) {
+          errorMessage.value = 'Не найдено';
+
         } else {
           errorMessage.value = 'Произошла ошибка при загрузке данных. Пожалуйста, попробуйте позже.';
         }
