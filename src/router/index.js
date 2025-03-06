@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 const MovieSearch = () => import(/* webpackChunkName: "movie-search" */ '../components/MovieSearch.vue');
 const TopMovies = () => import(/* webpackChunkName: "top-movies" */ '../components/TopMovies.vue');
-const MovieInfo = () => import(/* webpackChunkName: "player-page" */ '../components/MovieInfo.vue');
+const MovieInfo = () => import(/* webpackChunkName: "movie-info" */ '../components/MovieInfo.vue');
 const NotFound = () => import(/* webpackChunkName: "not-found" */ '../components/NotFound.vue');
 const ContactsPage = () => import(/* webpackChunkName: "contacts-page" */ '../components/ContactsPage.vue');
 
