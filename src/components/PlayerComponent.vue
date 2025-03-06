@@ -8,33 +8,32 @@
     </select>
   </div>
 
-  <!-- Контейнер плеера -->
-  <div :class="{'theater-player': theaterMode}" class="player-container">
-    <div :class="theaterMode ? 'theater-iframe-container' : 'iframe-container'">
+  <!-- Единый контейнер плеера -->
+  <div :class="['player-container', { 'theater-mode': theaterMode }]">
+    <div class="iframe-wrapper">
       <iframe
-        v-show="!iframeLoading"
+        ref="playerIframe"
         :src="selectedPlayerInternal?.iframe"
         frameborder="0"
         @load="onIframeLoad"
         allowfullscreen
         class="responsive-iframe"
       ></iframe>
+      <SpinnerLoading v-if="iframeLoading" />
     </div>
-    <SpinnerLoading v-if="iframeLoading" />
+
+    <!-- Кнопка закрытия в театральном режиме -->
+    <button
+      v-if="theaterMode"
+      @click="toggleTheaterMode"
+      class="close-theater-btn"
+      :class="{'visible': closeButtonVisible}"
+    >
+      ✖
+    </button>
   </div>
 
-  <!-- Кнопка закрытия в театральном режиме -->
-  <button
-    v-if="theaterMode"
-    @click="toggleTheaterMode"
-    class="close-theater-btn"
-    :class="{'visible': closeButtonVisible}"
-    @mousemove="showCloseButton"
-  >
-    ✖
-  </button>
-
-  <!-- Кнопка управления (скрыта на мобилках <600px) -->
+  <!-- Кнопка управления -->
   <div v-if="!isMobile" class="controls">
     <button @click="toggleTheaterMode" class="theater-mode-btn">
       {{ theaterMode ? 'Выйти из театрального режима' : 'Включить театральный режим' }}
@@ -44,7 +43,7 @@
 
 <script setup>
 import axios from 'axios';
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import SpinnerLoading from '@/components/SpinnerLoading.vue';
 
 const props = defineProps({
@@ -59,9 +58,9 @@ const selectedPlayerInternal = ref(props.selectedPlayer);
 const iframeLoading = ref(true);
 const theaterMode = ref(false);
 const closeButtonVisible = ref(false);
+const playerIframe = ref(null);
 const apiUrl = import.meta.env.VITE_APP_API_URL;
 
-// Определяем, мобильное ли устройство
 const isMobile = computed(() => window.innerWidth < 600);
 
 const fetchPlayers = async () => {
@@ -79,15 +78,9 @@ const fetchPlayers = async () => {
       selectedPlayerInternal.value = playersInternal.value[0];
       emit('update:selectedPlayer', selectedPlayerInternal.value);
     }
-    } catch (error) {
-      if (error.response && error.response.status === 403) {
-        errorMessage.value = 'Упс, у нас это недоступно =(';
-      } else {
-        errorMessage.value = 'Произошла ошибка при загрузке данных. Пожалуйста, попробуйте позже.';
-      }
-      console.error('Ошибка при загрузке плееров:', error);
-    } finally {
-    }
+  } catch (error) {
+    console.error('Ошибка при загрузке плееров:', error);
+  }
 };
 
 const onIframeLoad = () => {
@@ -96,39 +89,55 @@ const onIframeLoad = () => {
 
 const toggleTheaterMode = () => {
   theaterMode.value = !theaterMode.value;
+  
   if (theaterMode.value) {
-    closeButtonVisible.value = true;
-    setTimeout(() => {
-      closeButtonVisible.value = false;
-    }, 1500);
+    document.addEventListener('mousemove', showCloseButton);
+    document.addEventListener('keydown', onKeyDown);
+    document.body.classList.add('no-scroll');
+  } else {
+    document.removeEventListener('mousemove', showCloseButton);
+    document.removeEventListener('keydown', onKeyDown);
+    document.body.classList.remove('no-scroll');
   }
+  
+  closeButtonVisible.value = theaterMode.value;
 };
 
 const showCloseButton = (event) => {
-  if (event.clientY < 50) {
-    closeButtonVisible.value = true;
-  } else {
-    closeButtonVisible.value = false;
-  }
+  closeButtonVisible.value = event.clientY < 50;
 };
 
 const onKeyDown = (event) => {
   if (event.key === 'Escape' && theaterMode.value) {
-    theaterMode.value = false;
+    toggleTheaterMode();
   }
 };
 
+watch(selectedPlayerInternal, (newVal) => {
+  iframeLoading.value = true;
+  emit('update:selectedPlayer', newVal);
+});
+
 onMounted(() => {
   fetchPlayers();
-  window.addEventListener('keydown', onKeyDown);
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', onKeyDown);
+  document.removeEventListener('mousemove', showCloseButton);
+  document.removeEventListener('keydown', onKeyDown);
+  document.body.classList.remove('no-scroll');
 });
 </script>
 
 <style scoped>
+.players-list {
+  width: 100%;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .custom-select {
   padding: 8px 16px;
   border: 1px solid #444;
@@ -148,30 +157,45 @@ onBeforeUnmount(() => {
   border-color: #558839;
 }
 
-.players-list {
-  width: 100%;
-  margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Стили для обычного режима плеера */
 .player-container {
   position: relative;
   width: 100%;
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 20px;
-  z-index: 2;
+  transition: all 0.3s ease;
 }
 
-.iframe-container {
+.player-container.theater-mode {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  background: #000;
+  margin: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.player-container.theater-mode .iframe-wrapper {
+  position: static;
+  width: 100%;
+  height: 100%;
+  padding-top: 0;
+  flex-grow: 1;
+}
+
+.iframe-wrapper {
   position: relative;
   width: 100%;
-  padding-top: 56.25%; /* Соотношение сторон 16:9 */
   height: 0;
-  overflow: hidden;
+  padding-top: 56.25%; /* Сохраняем соотношение 16:9 */
 }
 
 .responsive-iframe {
@@ -183,20 +207,22 @@ onBeforeUnmount(() => {
   border: none;
 }
 
-/* Кнопка закрытия театрального режима */
+.player-container.theater-mode .responsive-iframe {
+  position: relative;
+  height: 100%;
+}
+
 .close-theater-btn {
   position: fixed;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 20px;
+  right: 20px;
   background: rgba(255, 0, 0, 0.7);
   color: white;
-  font-size: 24px;
   border: none;
   padding: 8px 14px;
-  cursor: pointer;
   border-radius: 50%;
-  transition: background-color 0.3s, opacity 0.3s;
+  cursor: pointer;
+  transition: opacity 0.3s;
   z-index: 1001;
   opacity: 0;
 }
@@ -209,30 +235,10 @@ onBeforeUnmount(() => {
   background: rgba(255, 0, 0, 1);
 }
 
-/* Обёртка для театрального режима */
-.theater-player {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: black;
-  z-index: 1000;
-  border-radius: 0;
-  margin: 0;
-}
-
-/* Кнопка управления (скрыта на мобилках) */
 .controls {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 10px;
-}
-
-@media (max-width: 599px) {
-  .theater-mode-btn {
-    display: none;
-  }
 }
 
 .theater-mode-btn {
@@ -248,5 +254,15 @@ onBeforeUnmount(() => {
 
 .theater-mode-btn:hover {
   background-color: #666;
+}
+
+@media (max-width: 599px) {
+  .theater-mode-btn {
+    display: none;
+  }
+}
+
+.no-scroll {
+  overflow: hidden;
 }
 </style>
